@@ -1,3 +1,8 @@
+Chào Leader, đây là bản báo cáo tổng kết **Chiến dịch Lab 2: Authentication & Authorization** được trình bày dưới định dạng Markdown (`.md`) chuẩn.
+
+Ông có thể copy nội dung này và lưu vào file `README.md` hoặc `MISSION_REPORT.md` trong thư mục dự án để làm tài liệu kỹ thuật sau này.
+
+```markdown
 # 🛡️ MISSION REPORT: AWS LAB 2 - AUTHENTICATION & AUTHORIZATION
 
 **Project:** Gaming Server Management  
@@ -73,9 +78,50 @@ export const handler = async (event) => {
   if ((method === "DELETE" || method === "POST") && !isAdmin) {
     return {
       statusCode: 403,
-      body: JSON.stringify({ message: "ACCESS DENIED: Chỉ Admin mới được quyền này!" })
+      body: JSON.stringify({ message: "⛔ ACCESS DENIED: Chỉ Admin mới được quyền này!" })
     };
   }
 
   // ... Logic xử lý DB tiếp theo ...
 };
+
+```
+
+### 3.2. Frontend (JavaScript) - Gửi Token
+
+```javascript
+async function callProtectedApi() {
+    // 1. Lấy Token từ LocalStorage
+    const token = localStorage.getItem("jwt_token");
+
+    // 2. Gửi Request kèm Header Authorization
+    const res = await fetch("https://api-gateway-url/server", {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}` //Chìa khóa thông hành
+        }
+    });
+
+    if (res.status === 401) console.log("Lỗi: Token hết hạn hoặc không hợp lệ");
+    if (res.status === 403) console.log("Lỗi: Không đủ quyền Admin");
+}
+
+```
+
+---
+
+## ⚠️ 4. CÁC BÀI HỌC XƯƠNG MÁU (TROUBLESHOOTING)
+
+| Lỗi Thường Gặp | Nguyên Nhân | Cách Khắc Phục |
+| --- | --- | --- |
+| **CORS Error (Red Text)** | API Gateway chặn request từ localhost hoặc chặn gói tin OPTIONS. | 1. Config CORS trên AWS (Nhớ bấm Enter).<br>
+
+<br>2. Xóa route `ANY`, tách thành GET/POST/DELETE.<br>
+
+<br>3. Deploy lại API. |
+| **401 Unauthorized** | Token sai, hết hạn hoặc không gửi Token. | Kiểm tra Header `Authorization: Bearer ...` trong code Frontend. |
+| **Redirect Mismatch** | Link `redirectUri` trong code khác với `Allowed callback URLs` trên AWS. | Đồng bộ hóa chính xác (lưu ý `localhost` vs `127.0.0.1`). |
+| **Issuer Invalid** | Điền sai Issuer URL trong Authorizer. | URL chỉ đến `[User_Pool_ID]`, không thêm đuôi `/.well-known/...`. |
+| **Config không lưu** | UI của AWS API Gateway chưa nhận giá trị nhập vào. | Khi nhập Origin/Header, bắt buộc bấm **ENTER** để tạo thẻ xám trước khi Save. |
+
