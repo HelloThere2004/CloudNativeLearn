@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Thrawn Command Center</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #00a8ff; border-bottom: 2px solid #00a8ff; padding-bottom: 10px; }
+        .card { background: #2d2d2d; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 10px; }
+        .btn-login { background: #00a8ff; color: white; }
+        .btn-danger { background: #ff4757; color: white; }
+        .btn-success { background: #2ed573; color: white; }
+        pre { background: #000; padding: 10px; overflow-x: auto; border-radius: 4px; color: #00ff00; }
+        .hidden { display: none; }
+        input { padding: 8px; border-radius: 4px; border: 1px solid #555; background: #333; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>COMMAND CENTER</h1>
+
+        <div id="login-section" class="card">
+            <h3>🔒 Authentication Required</h3>
+            <p>Vui lòng trình diện thẻ bài để truy cập hệ thống.</p>
+            <button onclick="login()" class="btn-login">Login via AWS Cognito</button>
+        </div>
+
+        <div id="dashboard-section" class="card hidden">
+            <h3>👤 Officer Profile</h3>
+            <p><strong>Token Status:</strong> <span style="color: #2ed573">Active</span></p>
+            <button onclick="logout()" class="btn-danger">Logout</button>
+            
+            <hr style="border-color: #444">
+            
+            <h3>📡 Operations</h3>
+            <div style="margin-bottom: 15px;">
+                <button onclick="getServers()" class="btn-success">GET Servers (Public)</button>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="delName" placeholder="Server Name to Delete">
+                <button onclick="deleteServer()" class="btn-danger">DELETE Server (Admin Only)</button>
+            </div>
+
+            <h3>📟 Console Output</h3>
+            <pre id="output">System Ready...</pre>
+        </div>
+    </div>
+
+    <script>
+        // --- ⚠️ CẤU HÌNH THÔNG SỐ CỦA ÔNG VÀO ĐÂY ---
+        const CONFIG = {
+            // VD: https://thrawn-gaming-123.auth.us-east-1.amazoncognito.com
+            cognitoDomain: "https://us-east-18fx3upnyi.auth.us-east-1.amazoncognito.com", 
+            
+            // VD: 4abcde12345...
+            clientId: "5n3m4sl2q26pi7e96fq0dqki8p", 
+            
+            // Link Callback ông đã set trong Cognito (phải khớp chính xác)
+            redirectUri: "http://localhost:5500/dashboard.html", 
+            
+            // Link API Gateway
+            apiUrl: "https://azv7y9nhyd.execute-api.us-east-1.amazonaws.com/server"
+        };
+        // ----------------------------------------------
+
+        // 1. Logic xử lý Callback khi trang vừa load
+        window.onload = function() {
+            // Kiểm tra xem trên URL có Token không (sau dấu #)
+            const hash = window.location.hash;
+            if (hash.includes("id_token")) {
+                const params = new URLSearchParams(hash.substring(1)); // Bỏ dấu #
+                const idToken = params.get("id_token");
+                if (idToken) {
+                    localStorage.setItem("jwt_token", idToken);
+                    // Xóa token trên URL cho đẹp
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
+            checkLoginState();
+        };
+
+        function checkLoginState() {
+            const token = localStorage.getItem("jwt_token");
+            if (token) {
+                document.getElementById("login-section").classList.add("hidden");
+                document.getElementById("dashboard-section").classList.remove("hidden");
+                log("Officer identified. Welcome back.");
+            } else {
+                document.getElementById("login-section").classList.remove("hidden");
+                document.getElementById("dashboard-section").classList.add("hidden");
+            }
+        }
+
+        function login() {
+            // Chuyển hướng sang trang Login của AWS
+            const targetUrl = `${CONFIG.cognitoDomain}/login?client_id=${CONFIG.clientId}&response_type=token&scope=email+openid+phone&redirect_uri=${CONFIG.redirectUri}`;
+            window.location.href = targetUrl;
+        }
+
+        function logout() {
+            localStorage.removeItem("jwt_token");
+            location.reload();
+        }
+
+        async function getServers() {
+            log("Fetching data...");
+            const token = localStorage.getItem("jwt_token"); // Lấy thẻ bài
+            
+            // SỬA ĐOẠN NÀY: Thêm headers chứa Authorization
+            const res = await fetch(CONFIG.apiUrl, {
+                method: "GET",
+                headers: {
+                    "Authorization": `Bearer ${token}`, // Trình thẻ bài ra
+                    "Content-Type": "application/json"
+                }
+            });
+            
+            if (res.status === 401) {
+                log("401 Unauthorized: Cổng đang khóa, Token không hợp lệ!");
+                return;
+            }
+
+            const data = await res.json();
+            log("GET Result: " + JSON.stringify(data, null, 2));
+        }
+
+        async function deleteServer() {
+            const name = document.getElementById("delName").value;
+            if(!name) return log("Error: Enter server name first");
+
+            const token = localStorage.getItem("jwt_token");
+            log(`Attemping to DELETE '${name}' with Token...`);
+
+            try {
+                const res = await fetch(`${CONFIG.apiUrl}?serverName=${name}`, {
+                    method: "DELETE",
+                    headers: {
+                        "Authorization": `Bearer ${token}` // Gửi thẻ bài đi
+                    }
+                });
+                
+                if (res.status === 403) {
+                    log("⛔ ACCESS DENIED: Bạn không có quyền Admin!");
+                } else if (res.ok) {
+                    log("✅ SUCCESS: Target eliminated.");
+                } else {
+                    log("Error: " + res.status);
+                }
+            } catch (e) {
+                log("Network Error: " + e.message);
+            }
+        }
+
+        function log(msg) {
+            document.getElementById("output").innerText = msg;
+        }
+    </script>
+</body>
+</html>
